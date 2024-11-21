@@ -135,5 +135,49 @@ class Preprocessor:
 
         top_trees = sorted(min_heap, key=lambda x: -x[0])
         return [item[2] for item in top_trees]
+    
+    def get_samples_with_special_characters(self, dataset_type="train", n=10, special_characters=None):
+        """
+        Returns the first n samples containing special characters in SRC from preprocessed files.
+        
+        Parameters:
+        - dataset_type (str): The type of dataset ('train', 'dev', 'test').
+        - n (int): The number of samples to return.
+        - special_characters (str): A string of special characters to check. If None, returns an empty list.
+        """
+        if not special_characters:
+            print("No special characters provided. Returning an empty list.")
+            return []
+
+        _, preprocessed_file = self._get_dataset_files(dataset_type)
+
+        if not os.path.exists(preprocessed_file):
+            print(f"Preprocessed file '{preprocessed_file}' not found. Generating it from the input file...")
+            self.filter_and_clean_dataset(dataset_type)
+
+        if not os.path.exists(preprocessed_file):
+            raise FileNotFoundError(f"Neither preprocessed file '{preprocessed_file}' nor the input file exists.")
+
+        results = []
+        processed_count = 0
+
+        with open(preprocessed_file, 'r') as infile:
+            for line in infile:
+                processed_count += 1
+                instance = json.loads(line)
+                src = instance.get(f"{dataset_type}.SRC", "")
+                if any(char in special_characters for char in src):
+                    results.append(instance)
+                if len(results) >= n:
+                    break
+
+                if processed_count % 1000 == 0:
+                    print(f"Processed {processed_count} entries...")
+
+        print(f"Finished processing {processed_count} entries.")
+        return results
+
+
+
 
 
