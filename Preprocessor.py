@@ -37,6 +37,12 @@ class Preprocessor:
                 current_depth -= 1
         return max_depth
 
+    def _calculate_size(self, tree):
+        """
+        Helper function to calculate the size of a parse tree.
+        """
+        return tree.count('(')
+
     def filter_and_clean_dataset(self, dataset_type="train", start=0, end=None):
         """
         Cleans the dataset file, retaining only 'SRC' and 'TOP' attributes of each entry.
@@ -81,9 +87,14 @@ class Preprocessor:
 
         print(f"Completed processing {processed_count} entries from {input_file} to {output_file}.")
 
-    def get_deepest_trees(self, dataset_type="train", top_n=10):
+    def get_top_trees(self, metric="depth", dataset_type="train", top_n=10):
         """
-        Returns the top_n instances with the deepest parse trees.
+        Returns the top_n instances with the deepest or largest parse trees.
+        
+        Parameters:
+        - metric (str): The metric to use ("depth" or "size").
+        - dataset_type (str): The type of dataset ('train', 'dev', 'test').
+        - top_n (int): The number of top entries to return.
         """
         _, preprocessed_file = self._get_dataset_files(dataset_type)
 
@@ -104,12 +115,17 @@ class Preprocessor:
                 if not top:
                     continue
 
-                depth = self._calculate_depth(top)
+                if metric == "depth":
+                    value = self._calculate_depth(top)
+                elif metric == "size":
+                    value = self._calculate_size(top)
+                else:
+                    raise ValueError(f"Invalid metric '{metric}'. Must be 'depth' or 'size'.")
 
                 if len(min_heap) < top_n:
-                    heapq.heappush(min_heap, (depth, index, instance))
-                elif depth > min_heap[0][0]:
-                    heapq.heapreplace(min_heap, (depth, index, instance))
+                    heapq.heappush(min_heap, (value, index, instance))
+                elif value > min_heap[0][0]:
+                    heapq.heapreplace(min_heap, (value, index, instance))
 
                 processed_count += 1
                 if processed_count % 1000 == 0:
@@ -117,6 +133,7 @@ class Preprocessor:
 
         print(f"Finished processing {processed_count} entries.")
 
-        deepest_trees = sorted(min_heap, key=lambda x: -x[0])
-        return [item[2] for item in deepest_trees]
+        top_trees = sorted(min_heap, key=lambda x: -x[0])
+        return [item[2] for item in top_trees]
+
 
