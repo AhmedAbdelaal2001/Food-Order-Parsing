@@ -64,6 +64,8 @@ To clean the dataset and retain only the `SRC` and `TOP` attributes of each entr
 preprocessor.filter_and_clean_dataset(dataset_type='train')
 ```
 
+You can, of course, specify different types for the dataset, such as "dev" or "test", depending on the dataset you wish to clean.
+
 ## Analyzing the Dataset
 
 The `Preprocessor` class provides methods to analyze the dataset, including finding the deepest and largest parse trees and analyzing special characters.
