@@ -1,8 +1,8 @@
 # Project Overview
 
-This repository contains tools and utilities for processing, analyzing, and working with structured natural language data. The repository includes modules for preprocessing datasets, analyzing hierarchical structures like parse trees, and extracting meaningful insights from these structures.
+This is our private repo for the NLP project. This README should contain summarized updates; check it regularly.
 
-## Contributing
+## Note
 
 Please ensure that any changes or additions adhere to clean coding standards. Before pushing to the repository:
 
@@ -27,7 +27,7 @@ Please ensure that any changes or additions adhere to clean coding standards. Be
 
 ## Preparing the Dataset
 
-Before starting, download the dataset from the project drive and place it in a directory called `dataset` at the root of the project. The `dataset` folder is included in the `.gitignore` file to prevent it from being pushed to the repository.
+Before starting, download the dataset from the project drive and place it in a directory called `dataset` at the root of the project. The `dataset` folder is included in the `.gitignore` file to prevent it from being pushed to the repository; do not change that.
 
 ---
 
@@ -44,7 +44,7 @@ The `tests` directory contains all Jupyter notebooks used for testing the classe
 
 The `Preprocessor` class is responsible for cleaning and restructuring the dataset. Specifically, it:
 1. Removes the `EXR` and `TOP-DECOUPLED` fields from each entry.
-2. Removes the redundant `ORDER` semantic constructor, which is present in every entry.
+2. Removes the redundant `ORDER` semantic constructor, which is present in every entry and adds no useful information for future models.
 3. Retains only the `SRC` and cleaned `TOP` fields.
 
 ### Initializing the Preprocessor
@@ -86,7 +86,7 @@ The `Analyzer` class provides tools for analyzing the hierarchical structure and
 2. Analyzing entries for the presence of special characters.
 3. Extracting and categorizing **semantic constructors** associated with `PIZZAORDER` and `DRINKORDER`.
 
-### Top 10 Deepest Trees
+### Top 3 Deepest Trees
 
 The deepest trees are those with the greatest depth in their hierarchical structure. The `ORDER` constructor is removed for clarity.
 
@@ -100,7 +100,7 @@ analyzer = Analyzer(
     preprocessed_test_file='preprocessed/test_preprocessed.json'
 )
 
-deepest_trees = analyzer.get_top_trees(metric='depth', dataset_type='train', top_n=10)
+deepest_trees = analyzer.get_top_trees(metric='depth', dataset_type='train', top_n=3)
 ```
 
 #### Example Results:
@@ -109,36 +109,35 @@ deepest_trees = analyzer.get_top_trees(metric='depth', dataset_type='train', top
 2. `(PIZZAORDER (NUMBER a ) (STYLE stuffed crust ) pizza with (TOPPING american cheese ) and (COMPLEX_TOPPING (QUANTITY a little bit of ) (TOPPING peperonni ) ) )`
 3. `(PIZZAORDER pie with (TOPPING banana pepper ) and (TOPPING peppperonis ) and (COMPLEX_TOPPING (QUANTITY extra ) (TOPPING low fat cheese ) ) )`
 
-### Top 10 Largest Trees
+### Top 2 Largest Trees
 
 The largest trees are those with the greatest number of nodes in their structure. The `ORDER` constructor is removed for clarity.
 
 ```python
-# Get the top 10 largest trees in the training dataset
-largest_trees = analyzer.get_top_trees(metric='size', dataset_type='train', top_n=10)
+# Get the top 2 largest trees in the training dataset
+largest_trees = analyzer.get_top_trees(metric='size', dataset_type='train', top_n=2)
 ```
 
 #### Example Results:
 
 1. `(PIZZAORDER (NUMBER three ) pizzas no (NOT (TOPPING american cheese ) ) and also (DRINKORDER (NUMBER three ) (CONTAINERTYPE cans ) of (DRINKTYPE ice tea ) ) and (DRINKORDER (NUMBER three ) (SIZE medium ) (DRINKTYPE fantas ) ) and (DRINKORDER (NUMBER three ) (SIZE medium ) (DRINKTYPE sprites ) ) )`
 2. `(PIZZAORDER (NUMBER three ) pizzas no (NOT (TOPPING american cheese ) ) and also (DRINKORDER (NUMBER a ) (CONTAINERTYPE bottle ) of (DRINKTYPE ice tea ) ) and (DRINKORDER (NUMBER three ) (SIZE medium ) (DRINKTYPE fantas ) ) and (DRINKORDER (NUMBER four ) (SIZE medium ) (DRINKTYPE sprites ) ) )`
-
 ---
 
 ### Semantic Constructors Analysis
 
-Semantic constructors are unique tokens that represent structural elements in the dataset. They are categorized based on their association with `PIZZAORDER` or `DRINKORDER`.
+Semantic constructors are unique tokens that represent structural elements in the dataset. They are categorized based on their association with `PIZZAORDER` or `DRINKORDER`. Defining them is important for finetuning BART.
 
 #### Associated Semantic Constructors:
 
 - **PIZZAORDER Constructors**:
   ```
-  {'COMPLEX_TOPPING', 'NOT', 'NUMBER', 'PIZZAORDER', 'QUANTITY', 'SIZE', 'STYLE', 'TOPPING'}
+  {'COMPLEX_TOPPING', 'NOT', 'NUMBER', 'QUANTITY', 'SIZE', 'STYLE', 'TOPPING'}
   ```
 
 - **DRINKORDER Constructors**:
   ```
-  {'CONTAINERTYPE', 'DRINKORDER', 'DRINKTYPE', 'NUMBER', 'SIZE', 'VOLUME'}
+  {'CONTAINERTYPE', 'DRINKTYPE', 'NUMBER', 'SIZE', 'VOLUME'}
   ```
 
 - **Union of Constructors**:
@@ -166,3 +165,9 @@ Analyze the dataset for the presence of special characters.
   ```
   ' -
   ```
+Note: the project document specified that we should remove special characters like @, but they do not exist in the first place in either the train or dev sets xD
+
+
+
+
+  
