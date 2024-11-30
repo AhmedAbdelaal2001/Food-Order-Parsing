@@ -94,7 +94,7 @@ class Preprocessor:
 
         print(f"Completed processing {processed_count} entries from {input_file} to {output_file}.")
 
-    def extract_orders_from_entry(self,entry, dataset_type="train"):
+    def extract_orders_from_entry(self, entry, dataset_type="train"):
         """
         Extracts and formats pizza and drink orders from the 'TOP_DECOUPLED' field while preserving the order of elements
         in the original text.
@@ -103,10 +103,10 @@ class Preprocessor:
 
         def process_elements(top_field):
             def recursive_process(i):
-                order = []
+                orders = []
+                current_order = []
                 n = len(top_field)
                 buffer = []  # To collect content within the current level
-
                 while i < n:
                     if top_field[i] == '(':
                         # Start a nested group
@@ -117,22 +117,32 @@ class Preprocessor:
                             i += 1
                         keyword = top_field[start:i]  # Extract the full word
 
-                        # Check if the keyword is "NOT"
-                        if keyword == 'NOT':  # include the keyword in the buffer
-                            order.append(keyword)
+                        if keyword=='NOT':
+                            # buffer.append(keyword)
+                            current_order.append("no")
+                        if keyword == 'PIZZAORDER' or keyword == 'DRINKORDER':
+                            if buffer:
+                                buffer.append(',')
+                                current_order.append(''.join(buffer).strip())
+                                buffer = []
 
+                            if current_order:
+                                orders.append(' '.join(current_order).strip())
+                                current_order = []
                         # Skip the space after the keyword if there's more content
                         if i < n and top_field[i] == ' ':
                             i += 1
 
                         # Recursively process the rest of the group
                         nested_order, i = recursive_process(i)
-                        order.append(nested_order)
+                        current_order.append(' '.join(nested_order).strip())
                     elif top_field[i] == ')':
                         # End of the current group
                         if buffer:  # Append any remaining content
-                            order.append(''.join(buffer).strip())
-                        return ' '.join(order).strip(), i + 1
+                            current_order.append(''.join(buffer).strip())
+                        if current_order:
+                            orders.append(' '.join(current_order).strip())
+                        return orders, i + 1
                     else:
                         # Collect characters into the buffer
                         buffer.append(top_field[i])
@@ -140,14 +150,17 @@ class Preprocessor:
 
                 # Append any remaining buffer at the top level
                 if buffer:
-                    order.append(''.join(buffer).strip())
-                return ' '.join(order).strip(), i
+                    current_order.append(''.join(buffer).strip())
+                if current_order:
+                    orders.append(' '.join(current_order).strip())
+                orders_list=orders[0].split(',')
+                return orders_list, i
 
             # Start processing from the top level
             parsed_result, _ = recursive_process(0)
             return parsed_result
-        return process_elements(top_field)
 
+        return process_elements(top_field)
 
 
     def _extract_orders(self, dataset_type="train",start=0, end=None):
