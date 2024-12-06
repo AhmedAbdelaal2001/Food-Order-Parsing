@@ -102,7 +102,8 @@ class Preprocessor:
         top_field = entry.get(f"{dataset_type}.TOP-DECOUPLED")
 
         def process_elements(top_field):
-            def recursive_process(i):
+            def recursive_process(i, IsPizza=[]):
+                # IsPizza=[]
                 orders = []
                 current_order = []
                 n = len(top_field)
@@ -120,6 +121,10 @@ class Preprocessor:
                         if keyword=='NOT':
                             # buffer.append(keyword)
                             current_order.append("no")
+                        if keyword == 'PIZZAORDER':
+                            IsPizza.append(True);
+                        if keyword == 'DRINKORDER':
+                            IsPizza.append(False);
                         if keyword == 'PIZZAORDER' or keyword == 'DRINKORDER':
                             if buffer:
                                 buffer.append(',')
@@ -153,7 +158,12 @@ class Preprocessor:
                     current_order.append(''.join(buffer).strip())
                 if current_order:
                     orders.append(' '.join(current_order).strip())
-                orders_list=orders[0].split(',')
+                    orders_list = []
+                i = 0
+                # print(len(IsPizza))
+                for order in orders[0].split(','):
+                    orders_list.append([order.strip(), IsPizza[i]])  # Create a pair of order and IsPizza boolean
+                    i += 1
                 return orders_list, i
 
             # Start processing from the top level
@@ -186,7 +196,9 @@ class Preprocessor:
                     batch.append(orders)
                     if len(batch) >= 1000:
                         for item in batch:
-                            outfile.write(json.dumps(item) + '\n')
+                            for order in item:
+                                outfile.write(json.dumps(order) + '\n')
+                            # outfile.write(json.dumps(item) + '\n')
                         processed_count += len(batch)
                         print(f"Processed {processed_count} entries so far.")
                         batch = []
