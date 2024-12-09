@@ -207,4 +207,109 @@ class Preprocessor:
             processed_count += len(batch)
             if batch:
                 print(f"Processed {processed_count} entries so far.")
-                
+        
+    def create_segmented_dataset(self, dataset_type="train", start=0, end=None):
+        """
+        Creates a segmented dataset that contains the SRC sentence and a corresponding array
+        of token labels based on hierarchical PIZZAORDER and DRINKORDER annotations.
+        Processes entries in batches for efficiency.
+        """
+        input_file, output_file = self._get_dataset_files(dataset_type)
+
+        if not os.path.exists(input_file):
+            raise FileNotFoundError(f"The input file '{input_file}' does not exist.")
+        if start < 0:
+            start = 0
+
+        with open(input_file, 'r') as infile, open(output_file, 'w') as outfile:
+
+            line_count = 0
+            processed_count = 0
+            batch = []
+
+            for line in infile:
+                line_count += 1
+                if line_count < start + 1:
+                    continue
+                if end is not None and line_count > end:
+                    break
+
+                instance = json.loads(line)
+                src_sentence = instance.get(f"{dataset_type}.SRC", "")
+                top_field = instance.get(f"{dataset_type}.TOP", "")
+
+                if not src_sentence or not top_field:
+                    continue
+
+                tokens = src_sentence.split()
+                labels = []
+
+                stack = []  # To track all special tokens
+                counter = 0  # To track the position within the current order
+
+                i = 0
+                while i < len(top_field):
+                    char = top_field[i]
+                    if char == '(':
+                        # Found the start of a new group
+                        i += 1
+                        group_start = i
+                        while i < len(top_field) and top_field[i] != ' ':
+                            i += 1
+                        entity = top_field[group_start:i]
+                        stack.append(entity)
+                        if entity in {"PIZZAORDER", "DRINKORDER"}:
+                            counter = 0  # Reset counter for new orders
+                    elif char == ')':
+                        # End of the current entity
+                        if stack:
+                            stack.pop()
+                        i += 1
+                    elif char == ' ':
+                        # Skip spaces
+                        i += 1
+                    else:
+                        # Process a token
+                        group_start = i
+                        while i < len(top_field) and top_field[i] != ' ':
+                            i += 1
+                        word = top_field[group_start:i]
+
+                        if stack:
+                            counter += 1
+                            if counter == 1:
+                                labels.append(f"{stack[0].split('ORDER')[0]}_BEGIN")
+                            else:
+                                labels.append(f"{stack[0].split('ORDER')[0]}_INTERMEDIATE")
+                        else:
+                            labels.append("OTHER")
+
+                # Prepare output entry
+                segmented_entry = {
+                    f"{dataset_type}.SRC": src_sentence,
+                    f"{dataset_type}.LABELS": labels
+                }
+                batch.append(segmented_entry)
+                if len(batch) >= 1000:
+                    for item in batch:
+                        outfile.write(json.dumps(item) + '\n')
+                    processed_count += len(batch)
+                    print(f"Processed {processed_count} entries so far.")
+                    batch = []
+
+
+            # Process any remaining entries in the batch
+            for item in batch:
+                outfile.write(json.dumps(item) + '\n')
+            processed_count += len(batch)
+
+            print(f"Processed {processed_count} entries for segmented dataset '{output_file}'.")
+
+
+
+
+
+
+
+
+                        
