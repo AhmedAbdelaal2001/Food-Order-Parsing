@@ -1,6 +1,6 @@
 import os
 import json
-
+import re
 class Preprocessor:
     def __init__(self, train_file, dev_file, test_file, preprocessed_train_file, preprocessed_dev_file, preprocessed_test_file):
         self.train_file = train_file
@@ -96,12 +96,27 @@ class Preprocessor:
 
     def extract_orders_from_entry(self, entry, dataset_type="train"):
         """
-        Extracts and formats pizza and drink orders from the 'TOP_DECOUPLED' field while preserving the order of elements
+        Extracts and formats pizza and drink orders from the 'TOP' field while preserving the order of elements
         in the original text.
         """
-        top_field = entry.get(f"{dataset_type}.TOP-DECOUPLED")
+        top_field = entry.get(f"{dataset_type}.TOP")
 
         def process_elements(top_field):
+            n = len(top_field)
+            i=0
+            while i < n:
+                if top_field[i] == '(':
+                    # Start a nested group
+                    i += 1  # Move past '('
+                    # Extract the first word after '('
+                    start = i
+                    while i < n and top_field[i] != ' ' and top_field[i] != ')':
+                        i += 1
+                    keyword = top_field[start:i]  # Extract the full word
+                if keyword == 'PIZZAORDER' or keyword == 'DRINKORDER':
+                    i=start-1
+                    break
+                i+=1
             def recursive_process(i, IsPizza=[]):
                 # IsPizza=[]
                 orders = []
@@ -118,19 +133,13 @@ class Preprocessor:
                             i += 1
                         keyword = top_field[start:i]  # Extract the full word
 
-                        if keyword=='NOT':
-                            # buffer.append(keyword)
-                            current_order.append("no")
                         if keyword == 'PIZZAORDER':
                             IsPizza.append(True);
                         if keyword == 'DRINKORDER':
                             IsPizza.append(False);
                         if keyword == 'PIZZAORDER' or keyword == 'DRINKORDER':
                             if buffer:
-                                buffer.append(',')
-                                current_order.append(''.join(buffer).strip())
                                 buffer = []
-
                             if current_order:
                                 orders.append(' '.join(current_order).strip())
                                 current_order = []
@@ -139,7 +148,11 @@ class Preprocessor:
                             i += 1
 
                         # Recursively process the rest of the group
-                        nested_order, i = recursive_process(i)
+                        nested_order, i,IsPizza = recursive_process(i,IsPizza)
+                        if buffer:
+                            # buffer.append(',')
+                            current_order.append(''.join(buffer).strip())
+                            buffer = []
                         current_order.append(' '.join(nested_order).strip())
                     elif top_field[i] == ')':
                         # End of the current group
@@ -147,7 +160,7 @@ class Preprocessor:
                             current_order.append(''.join(buffer).strip())
                         if current_order:
                             orders.append(' '.join(current_order).strip())
-                        return orders, i + 1
+                        return orders, i + 1,IsPizza
                     else:
                         # Collect characters into the buffer
                         buffer.append(top_field[i])
@@ -158,17 +171,12 @@ class Preprocessor:
                     current_order.append(''.join(buffer).strip())
                 if current_order:
                     orders.append(' '.join(current_order).strip())
-                    orders_list = []
-                i = 0
-                # print(len(IsPizza))
-                for order in orders[0].split(','):
-                    orders_list.append([order.strip(), IsPizza[i]])  # Create a pair of order and IsPizza boolean
-                    i += 1
-                return orders_list, i
+                return orders, i,IsPizza
 
             # Start processing from the top level
-            parsed_result, _ = recursive_process(0)
-            return parsed_result
+            parsed_result, _ ,IsPizza= recursive_process(i,[])
+            paired_orders = [[order.strip(), IsPizza[idx]] for idx, order in enumerate(parsed_result)]
+            return paired_orders
 
         return process_elements(top_field)
 
@@ -203,7 +211,9 @@ class Preprocessor:
                         print(f"Processed {processed_count} entries so far.")
                         batch = []
             for item in batch:
-                outfile.write(json.dumps(item) + '\n')
+                for order in item:
+                    outfile.write(json.dumps(order) + '\n')
+                # outfile.write(json.dumps(item) + '\n')
             processed_count += len(batch)
             if batch:
                 print(f"Processed {processed_count} entries so far.")
@@ -304,8 +314,92 @@ class Preprocessor:
             processed_count += len(batch)
 
             print(f"Processed {processed_count} entries for segmented dataset '{output_file}'.")
+    def Label_dataset(self, dataset_type="train",start=0, end=None):
+        input_file, _ = self._get_dataset_files(dataset_type)
+        output_file="../dataset/labels.json"
+        if not os.path.exists(input_file):
+            raise FileNotFoundError(f"The input file '{input_file}' does not exist.")
+        if start < 0:
+            start = 0
+        with open(input_file, 'r') as infile, open(output_file, 'w') as outfile:
+            batch = []
+            line_count = 0
+            processed_count = 0
+            for line in infile:
+                line_count += 1
+                if line_count < start + 1:
+                    continue
+                if end is not None and line_count > end:
+                    break
+                instance = json.loads(line)
+                orders=self.label_entry(instance, dataset_type)
+                if orders:
+                    batch.append(orders)
+                    if len(batch) >= 1000:
+                        for item in batch:
+                            for order in item:
+                                outfile.write(json.dumps(order) + '\n')
+                            # outfile.write(json.dumps(item) + '\n')
+                        processed_count += len(batch)
+                        print(f"Processed {processed_count} entries so far.")
+                        batch = []
+            for item in batch:
+                for order in item:
+                    outfile.write(json.dumps(order) + '\n')
+            processed_count += len(batch)
+            if batch:
+                print(f"Processed {processed_count} entries so far.")
+    def label_entry(self, entry, dataset_type="train"):
+        """
+        Labels each word in top-decoupled field as (Topping,Quantity,....)
+        """
+        top_decoupled = entry.get(f"{dataset_type}.TOP-DECOUPLED")
+        # Stack to keep track of hierarchy
+        stack = []
+        labels = []
+        # Regular expression to split by parentheses and words
+        tokens = re.findall(r'\(|\)|[^\s()]+', top_decoupled)
+        current_labels = []  # This will hold the current stack of labels
+        buffer=[]
+        for token in tokens:
+            if token in ['PIZZAORDER', 'DRINKORDER', 'ORDER']:
+                continue
+            if token == '(':
+                # Starting a new level in the hierarchy, push current labels onto the stack
+                stack.append(current_labels.copy())
+                buffer=[]
+            elif token == ')':
+                # Ending the current level, pop the stack and restore previous context
+                current_labels = stack.pop()
+                if buffer:
+                    phrase=' '.join(buffer).strip()
+                    combined_label = " ".join(current_labels)
+                    labels.append((phrase, combined_label))
+                    buffer=[]
+            elif token.isupper() and token not in ['PIZZAORDER', 'DRINKORDER', 'ORDER']:
+                # If the token is an uppercase word, it is a label, so add it to the current context
+                current_labels.append(token)
+            else:
+                # Otherwise, it's a word (could be number or item), assign the combined labels
+                combined_label = " ".join(current_labels)
+                labels.append((token, combined_label))  
+            # Combine multi-word phrases
+        combined_labels = []
+        i = 0
+        while i < len(labels):
+            word, label = labels[i]
+            if i + 1 < len(labels) and labels[i + 1][1] == label:
+                # Combine consecutive words with the same label
+                combined_word = word
+                while i + 1 < len(labels) and labels[i + 1][1] == label:
+                    combined_word += ' ' + labels[i + 1][0]
+                    i += 1
+                combined_labels.append((combined_word, label))
+            else:
+                combined_labels.append((word, label))
+            i += 1
 
-
+        return combined_labels
 
 
 
