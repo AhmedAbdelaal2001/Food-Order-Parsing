@@ -1,7 +1,6 @@
 import json
 import re
 import numpy as np
-from gensim.models import KeyedVectors
 from enum import Enum
 
 
@@ -19,7 +18,6 @@ def remove_uppercase_words(input_str):
     result = re.sub(r'\s+', ' ', result).strip()
     
     return result.split()
-
 
 def get_important_words(input: str, output: str) -> dict[int, str]:   
     input = input.split()
@@ -55,13 +53,11 @@ def get_important_words(input: str, output: str) -> dict[int, str]:
 
     return words_with_brackets
 
-
 def create_label_from_sample(input: str, output: str) -> str:
     custom_output = remove_uppercase_words(output)
     important_words = get_important_words(input, output)
     
     label = []
-    last_important_word = -1
 
     for i in range(len(input.split())):
         if i in important_words:
@@ -69,14 +65,10 @@ def create_label_from_sample(input: str, output: str) -> str:
             
             if j > 1 and custom_output[j-2] in ["(PIZZAORDER", "(DRINKORDER"]:
                 label.append(Label.B.value)
-                label[last_important_word] = Label.E.value if last_important_word != -1 else label[last_important_word]
             else: label.append(Label.I.value)
-
-            last_important_word = i
             
         else: label.append(Label.N.value)
 
-    label[last_important_word] = Label.E.value if last_important_word != -1 else label[last_important_word]
     return label
 
 def read_dataset_from_json(file_path: str) -> list[dict[str, str]]:
@@ -114,10 +106,12 @@ def write_lstm_dataset_to_json(file_path: str, X, y):
             json.dump({"X": X[i], "y": y[i]}, file)
             file.write('\n')
 
-def load_lstm_dataset_from_json(file_path: str):
+def load_lstm_dataset_from_json(file_path: str, size=None):
     X, y = [], []
     with open(file_path, 'r') as file:
-        for line in file:
+        for i, line in enumerate(file):
+            if size is not None and i >= size:
+                break
             sample = json.loads(line)
             X.append(sample["X"])
             y.append(sample["y"])
