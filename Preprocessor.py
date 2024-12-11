@@ -1,6 +1,7 @@
 import os
 import json
 import re
+import heapq
 class Preprocessor:
     def __init__(self, train_file, dev_file, test_file, preprocessed_train_file, preprocessed_dev_file, preprocessed_test_file):
         self.train_file = train_file
@@ -401,6 +402,106 @@ class Preprocessor:
 
         return combined_labels
 
+    def extract_top_by_depth_and_size(self, sample_size):
+        """
+        Extract the top `sample_size` entries by tree depth and then by tree size from the training dataset.
+        """
+        input_file, output_file = self._get_dataset_files("train")
+        temp_depth_file = f"{output_file}_top_depth.json"
+        temp_size_file = f"{output_file}_top_size.json"
+
+        if not os.path.exists(input_file):
+            raise FileNotFoundError(f"The input file '{input_file}' does not exist.")
+
+        # Step 1: Find the top `sample_size` entries by tree depth
+        depth_heap = []  # Min-heap to track top entries by depth
+        excluded_indices = set()
+        processed_count = 0
+        
+        print("Finding top entries by tree depth...")
+
+        with open(input_file, 'r') as infile:
+            for index, line in enumerate(infile):
+                instance = json.loads(line)
+                top_field = instance.get("train.TOP")
+
+                if not top_field:
+                    continue
+
+                depth = self._calculate_depth(top_field)
+                if len(depth_heap) < sample_size:
+                    heapq.heappush(depth_heap, (depth, index, instance))
+                elif depth > depth_heap[0][0]:
+                    heapq.heapreplace(depth_heap, (depth, index, instance))
+
+                processed_count += 1
+                if processed_count % 1000 == 0:
+                    print(f"Processed {processed_count} entries for tree depth...")
+
+        depth_top_entries = [heapq.heappop(depth_heap) for _ in range(len(depth_heap))]
+        depth_top_entries.sort(reverse=True, key=lambda x: x[0])
+
+        with open(temp_depth_file, 'w') as depth_outfile:
+            for _, index, instance in depth_top_entries:
+                excluded_indices.add(index)
+                depth_outfile.write(json.dumps(instance) + '\n')
+
+        print(f"Saved top {sample_size} entries by tree depth to {temp_depth_file}")
+
+        # Step 2: Find the top `sample_size` entries by tree size excluding depth entries
+        size_heap = []  # Min-heap to track top entries by size
+        processed_count = 0
+
+        print("Finding top entries by tree size, excluding those already extracted by depth...")
+
+        with open(input_file, 'r') as infile:
+            for index, line in enumerate(infile):
+                if index in excluded_indices:
+                    continue
+
+                instance = json.loads(line)
+                top_field = instance.get("train.TOP")
+
+                if not top_field:
+                    continue
+
+                size = self._calculate_size(top_field)
+                if len(size_heap) < sample_size:
+                    heapq.heappush(size_heap, (size, index, instance))
+                elif size > size_heap[0][0]:
+                    heapq.heapreplace(size_heap, (size, index, instance))
+
+                processed_count += 1
+                if processed_count % 1000 == 0:
+                    print(f"Processed {processed_count} entries for tree size...")
+
+        size_top_entries = [heapq.heappop(size_heap) for _ in range(len(size_heap))]
+        size_top_entries.sort(reverse=True, key=lambda x: x[0])
+
+        with open(temp_size_file, 'w') as size_outfile:
+            for _, _, instance in size_top_entries:
+                size_outfile.write(json.dumps(instance) + '\n')
+
+        print(f"Saved top {sample_size} entries by tree size to {temp_size_file}")
+
+    def _calculate_depth(self, tree):
+        """
+        Helper function to calculate the depth of a parse tree.
+        """
+        max_depth, current_depth = 0, 0
+        for char in tree:
+            if char == '(':
+                current_depth += 1
+                max_depth = max(max_depth, current_depth)
+            elif char == ')':
+                current_depth -= 1
+        return max_depth
+
+    def _calculate_size(self, tree):
+        """
+        Helper function to calculate the size of a parse tree.
+        """
+        return tree.count('(')
 
 
 
