@@ -2,6 +2,25 @@ import os
 import json
 import re
 import heapq
+from collections import OrderedDict
+class OrderedSet: # helper class to maintain order and uniqueness of elements
+    def __init__(self):
+        self._data = OrderedDict()
+
+    def add(self, element):
+        self._data[element] = None
+
+    def __contains__(self, element):
+        return element in self._data
+
+    def __iter__(self):
+        return iter(self._data)
+
+    def __len__(self):
+        return len(self._data)
+
+    def __repr__(self):
+        return f"OrderedSet({list(self._data.keys())})"
 class Preprocessor:
     def __init__(self, train_file, dev_file, test_file, preprocessed_train_file, preprocessed_dev_file, preprocessed_test_file):
         self.train_file = train_file
@@ -406,8 +425,38 @@ class Preprocessor:
                 labels.append((token, combined_label))
         all_orders.append(labels)
         return all_orders
+    def get_unique_labels(self, dataset_type="train", start=0, end=None):
+        """
+        Extracts unique labels from the dataset for analysis.
+        """
+        input_file, _ = self._get_dataset_files(dataset_type)
+        if not os.path.exists(input_file):
+            raise FileNotFoundError(f"The input file '{input_file}' does not exist.")
+        if start < 0:
+            start = 0
 
+        unique_labels = OrderedSet()
 
+        with open(input_file, 'r') as infile:
+            line_count = 0
+            for line in infile:
+                line_count += 1
+                if line_count < start + 1:
+                    continue
+                if end is not None and line_count > end:
+                    break
+
+                instance = json.loads(line)
+                orders = self.label_entry(instance, dataset_type)
+                # print(orders)
+                for order in orders:
+                    for label in order:
+                        unique_labels.add((label))
+        output_file="../dataset/unique_labels.json"
+        with open(output_file, 'w') as outfile:
+            for label in unique_labels:
+                outfile.write(json.dumps(label) + '\n')
+                
     def extract_top_by_depth_and_size(self, sample_size):
         """
         Extract the top `sample_size` entries by tree depth and then by tree size from the training dataset.
