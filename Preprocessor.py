@@ -333,7 +333,7 @@ class Preprocessor:
                 if end is not None and line_count > end:
                     break
                 instance = json.loads(line)
-                orders=self.label_entry(instance, dataset_type)
+                orders=self.label_entry(instance,dataset_type)
                 if orders:
                     batch.append(orders)
                     if len(batch) >= 1000:
@@ -350,57 +350,73 @@ class Preprocessor:
             processed_count += len(batch)
             if batch:
                 print(f"Processed {processed_count} entries so far.")
+
     def label_entry(self, entry, dataset_type="train"):
         """
-        Labels each word in top-decoupled field as (Topping,Quantity,....)
+        Labels each word in top-decoupled field as (Topping, Quantity, etc.)
         """
         top_decoupled = entry.get(f"{dataset_type}.TOP-DECOUPLED")
+        if not top_decoupled:
+            return []
+        n = len(top_decoupled)
+        i=0
+        while i < n:
+                if top_decoupled[i] == '(':
+                    # Start a nested group
+                    i += 1  # Move past '('
+                    # Extract the first word after '('
+                    start = i
+                    while i < n and top_decoupled[i] != ' ' and top_decoupled[i] != ')':
+                        i += 1
+                    keyword = top_decoupled[start:i]  # Extract the full word
+                if keyword == 'PIZZAORDER' or keyword == 'DRINKORDER':
+                    i=i+1
+                    break
+                i+=1
+        top_decoupled=top_decoupled[i:]
         # Stack to keep track of hierarchy
         stack = []
         labels = []
         # Regular expression to split by parentheses and words
         tokens = re.findall(r'\(|\)|[^\s()]+', top_decoupled)
         current_labels = []  # This will hold the current stack of labels
-        buffer=[]
+        buffer = []
+        all_orders=[]
+
         for token in tokens:
-            if token in ['PIZZAORDER', 'DRINKORDER', 'ORDER']:
+            if token in ['PIZZAORDER', 'DRINKORDER']:
+                all_orders.append(labels)
+                current_labels = []
+                labels = []
                 continue
             if token == '(':
                 # Starting a new level in the hierarchy, push current labels onto the stack
                 stack.append(current_labels.copy())
-                buffer=[]
+                buffer = []
             elif token == ')':
-                # Ending the current level, pop the stack and restore previous context
-                current_labels = stack.pop()
+                # Ending the current level, pop the stack and restore previous labels
                 if buffer:
-                    phrase=' '.join(buffer).strip()
+                    phrase = ' '.join(buffer).strip()
                     combined_label = " ".join(current_labels)
                     labels.append((phrase, combined_label))
-                    buffer=[]
-            elif token.isupper() and token not in ['PIZZAORDER', 'DRINKORDER', 'ORDER']:
-                # If the token is an uppercase word, it is a label, so add it to the current context
+                    buffer = []
+                current_labels = stack.pop() if stack else []
+            elif token.isupper():
+                # If the token is an uppercase word, it is a label, so add it to the current labels
                 current_labels.append(token)
             else:
-                # Otherwise, it's a word (could be number or item), assign the combined labels
-                combined_label = " ".join(current_labels)
-                labels.append((token, combined_label))  
-            # Combine multi-word phrases
-        combined_labels = []
-        i = 0
-        while i < len(labels):
-            word, label = labels[i]
-            if i + 1 < len(labels) and labels[i + 1][1] == label:
-                # Combine consecutive words with the same label
-                combined_word = word
-                while i + 1 < len(labels) and labels[i + 1][1] == label:
-                    combined_word += ' ' + labels[i + 1][0]
-                    i += 1
-                combined_labels.append((combined_word, label))
-            else:
-                combined_labels.append((word, label))
-            i += 1
+                # Otherwise, it's a word (could be a number or item), store it in the buffer
+                buffer.append(token)
 
-        return combined_labels
+        # Handle any remaining buffer data after parsing
+        if buffer:
+            phrase = ' '.join(buffer).strip()
+            combined_label = " ".join(current_labels)
+            labels.append((phrase, combined_label))
+
+        all_orders.append(labels)
+        return all_orders
+
 
     def extract_top_by_depth_and_size(self, sample_size):
         """
