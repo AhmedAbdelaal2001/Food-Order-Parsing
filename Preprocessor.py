@@ -353,38 +353,38 @@ class Preprocessor:
 
     def label_entry(self, entry, dataset_type="train"):
         """
-        Labels each word in top-decoupled field as (Topping, Quantity, etc.)
+        Labels each word in top field as (Topping, Quantity, etc.)
         """
-        top_decoupled = entry.get(f"{dataset_type}.TOP-DECOUPLED")
-        if not top_decoupled:
+        top_field = entry.get(f"{dataset_type}.TOP")
+        if not top_field:
             return []
-        n = len(top_decoupled)
+        n = len(top_field)
         i=0
         while i < n:
-                if top_decoupled[i] == '(':
+                if top_field[i] == '(':
                     # Start a nested group
                     i += 1  # Move past '('
                     # Extract the first word after '('
                     start = i
-                    while i < n and top_decoupled[i] != ' ' and top_decoupled[i] != ')':
+                    while i < n and top_field[i] != ' ' and top_field[i] != ')':
                         i += 1
-                    keyword = top_decoupled[start:i]  # Extract the full word
+                    keyword = top_field[start:i]  # Extract the full word
                 if keyword == 'PIZZAORDER' or keyword == 'DRINKORDER':
                     i=i+1
                     break
                 i+=1
-        top_decoupled=top_decoupled[i:]
+        top_field=top_field[i:]
         # Stack to keep track of hierarchy
         stack = []
         labels = []
         # Regular expression to split by parentheses and words
-        tokens = re.findall(r'\(|\)|[^\s()]+', top_decoupled)
-        current_labels = []  # This will hold the current stack of labels
-        buffer = []
+        tokens = re.findall(r'\(|\)|[^\s()]+', top_field)
+        current_labels = []  # This will hold the current stack of labels 
         all_orders=[]
-
+        inside_brackets=False 
         for token in tokens:
             if token in ['PIZZAORDER', 'DRINKORDER']:
+                labels.append((token, combined_label))    
                 all_orders.append(labels)
                 current_labels = []
                 labels = []
@@ -392,28 +392,18 @@ class Preprocessor:
             if token == '(':
                 # Starting a new level in the hierarchy, push current labels onto the stack
                 stack.append(current_labels.copy())
-                buffer = []
+                inside_brackets=True
             elif token == ')':
-                # Ending the current level, pop the stack and restore previous labels
-                if buffer:
-                    phrase = ' '.join(buffer).strip()
-                    combined_label = " ".join(current_labels)
-                    labels.append((phrase, combined_label))
-                    buffer = []
+                # Ending the current level, pop the stack and restore previous labels   
                 current_labels = stack.pop() if stack else []
+                inside_brackets=False
             elif token.isupper():
                 # If the token is an uppercase word, it is a label, so add it to the current labels
-                current_labels.append(token)
+                if inside_brackets:
+                    current_labels.append(token)   
             else:
-                # Otherwise, it's a word (could be a number or item), store it in the buffer
-                buffer.append(token)
-
-        # Handle any remaining buffer data after parsing
-        if buffer:
-            phrase = ' '.join(buffer).strip()
-            combined_label = " ".join(current_labels)
-            labels.append((phrase, combined_label))
-
+                combined_label = " ".join(current_labels) if inside_brackets else "OTHER"
+                labels.append((token, combined_label))
         all_orders.append(labels)
         return all_orders
 
