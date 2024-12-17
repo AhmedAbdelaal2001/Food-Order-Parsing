@@ -1,3 +1,5 @@
 dataset/
 word2vec/
 BiLSTM/datasets/
+models/
+module1.zip
