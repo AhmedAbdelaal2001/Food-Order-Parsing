@@ -2,6 +2,25 @@ import os
 import json
 import re
 import heapq
+from collections import OrderedDict
+class OrderedSet: # helper class to maintain order and uniqueness of elements
+    def __init__(self):
+        self._data = OrderedDict()
+
+    def add(self, element):
+        self._data[element] = None
+
+    def __contains__(self, element):
+        return element in self._data
+
+    def __iter__(self):
+        return iter(self._data)
+
+    def __len__(self):
+        return len(self._data)
+
+    def __repr__(self):
+        return f"OrderedSet({list(self._data.keys())})"
 class Preprocessor:
     def __init__(self, train_file, dev_file, test_file, preprocessed_train_file, preprocessed_dev_file, preprocessed_test_file):
         self.train_file = train_file
@@ -333,7 +352,7 @@ class Preprocessor:
                 if end is not None and line_count > end:
                     break
                 instance = json.loads(line)
-                orders=self.label_entry(instance, dataset_type)
+                orders=self.label_entry(instance,dataset_type)
                 if orders:
                     batch.append(orders)
                     if len(batch) >= 1000:
@@ -350,58 +369,94 @@ class Preprocessor:
             processed_count += len(batch)
             if batch:
                 print(f"Processed {processed_count} entries so far.")
+
     def label_entry(self, entry, dataset_type="train"):
         """
-        Labels each word in top-decoupled field as (Topping,Quantity,....)
+        Labels each word in top field as (Topping, Quantity, etc.)
         """
-        top_decoupled = entry.get(f"{dataset_type}.TOP-DECOUPLED")
+        top_field = entry.get(f"{dataset_type}.TOP")
+        if not top_field:
+            return []
+        n = len(top_field)
+        i=0
+        while i < n:
+                if top_field[i] == '(':
+                    # Start a nested group
+                    i += 1  # Move past '('
+                    # Extract the first word after '('
+                    start = i
+                    while i < n and top_field[i] != ' ' and top_field[i] != ')':
+                        i += 1
+                    keyword = top_field[start:i]  # Extract the full word
+                if keyword == 'PIZZAORDER' or keyword == 'DRINKORDER':
+                    i=i+1
+                    break
+                i+=1
+        top_field=top_field[i:]
         # Stack to keep track of hierarchy
         stack = []
         labels = []
         # Regular expression to split by parentheses and words
-        tokens = re.findall(r'\(|\)|[^\s()]+', top_decoupled)
-        current_labels = []  # This will hold the current stack of labels
-        buffer=[]
+        tokens = re.findall(r'\(|\)|[^\s()]+', top_field)
+        current_labels = []  # This will hold the current stack of labels 
+        all_orders=[]
+        inside_brackets=False 
         for token in tokens:
-            if token in ['PIZZAORDER', 'DRINKORDER', 'ORDER']:
+            if token in ['PIZZAORDER', 'DRINKORDER']:
+                labels.append((token, combined_label))    
+                all_orders.append(labels)
+                current_labels = []
+                labels = []
                 continue
             if token == '(':
                 # Starting a new level in the hierarchy, push current labels onto the stack
                 stack.append(current_labels.copy())
-                buffer=[]
+                inside_brackets=True
             elif token == ')':
-                # Ending the current level, pop the stack and restore previous context
-                current_labels = stack.pop()
-                if buffer:
-                    phrase=' '.join(buffer).strip()
-                    combined_label = " ".join(current_labels)
-                    labels.append((phrase, combined_label))
-                    buffer=[]
-            elif token.isupper() and token not in ['PIZZAORDER', 'DRINKORDER', 'ORDER']:
-                # If the token is an uppercase word, it is a label, so add it to the current context
-                current_labels.append(token)
+                # Ending the current level, pop the stack and restore previous labels   
+                current_labels = stack.pop() if stack else []
+                inside_brackets=False
+            elif token.isupper():
+                # If the token is an uppercase word, it is a label, so add it to the current labels
+                if inside_brackets:
+                    current_labels.append(token)   
             else:
-                # Otherwise, it's a word (could be number or item), assign the combined labels
-                combined_label = " ".join(current_labels)
-                labels.append((token, combined_label))  
-            # Combine multi-word phrases
-        combined_labels = []
-        i = 0
-        while i < len(labels):
-            word, label = labels[i]
-            if i + 1 < len(labels) and labels[i + 1][1] == label:
-                # Combine consecutive words with the same label
-                combined_word = word
-                while i + 1 < len(labels) and labels[i + 1][1] == label:
-                    combined_word += ' ' + labels[i + 1][0]
-                    i += 1
-                combined_labels.append((combined_word, label))
-            else:
-                combined_labels.append((word, label))
-            i += 1
+                combined_label = " ".join(current_labels) if inside_brackets else "OTHER"
+                labels.append((token, combined_label))
+        all_orders.append(labels)
+        return all_orders
+    def get_unique_labels(self, dataset_type="train", start=0, end=None):
+        """
+        Extracts unique labels from the dataset for analysis.
+        """
+        input_file, _ = self._get_dataset_files(dataset_type)
+        if not os.path.exists(input_file):
+            raise FileNotFoundError(f"The input file '{input_file}' does not exist.")
+        if start < 0:
+            start = 0
 
-        return combined_labels
+        unique_labels = OrderedSet()
 
+        with open(input_file, 'r') as infile:
+            line_count = 0
+            for line in infile:
+                line_count += 1
+                if line_count < start + 1:
+                    continue
+                if end is not None and line_count > end:
+                    break
+
+                instance = json.loads(line)
+                orders = self.label_entry(instance, dataset_type)
+                # print(orders)
+                for order in orders:
+                    for label in order:
+                        unique_labels.add((label))
+        output_file="../dataset/unique_labels.json"
+        with open(output_file, 'w') as outfile:
+            for label in unique_labels:
+                outfile.write(json.dumps(label) + '\n')
+                
     def extract_top_by_depth_and_size(self, sample_size):
         """
         Extract the top `sample_size` entries by tree depth and then by tree size from the training dataset.
