@@ -1,8 +1,14 @@
 import tensorflow as tf
 import numpy as np
+import gensim.downloader as api
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
+from gensim.models import KeyedVectors
+import os
 from keras.preprocessing.sequence import pad_sequences
 import os
 import sys
+
 # Add the parent directory to the Python path
 parent_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(parent_directory)
@@ -15,7 +21,7 @@ class LSTM(Model):
         self.features_extractor = FeaturesExtractor(word2vec_path)
 
     def predict_labels(self, sentence):
-        return model_predict(self.model, sentence, self.features_extractor)
+        return (sentence.split(), model_predict(self.model, sentence, self.features_extractor))
     
 
 
@@ -37,12 +43,6 @@ def model_predict(model, sentence, embedder):
     # Map each predicted integer label to its corresponding string label
     mapped_labels = [indices_to_labels[label] for label in predicted_labels]
     return mapped_labels
-
-import gensim.downloader as api
-from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
-from gensim.models import KeyedVectors
-import os
 
 
 class FeaturesExtractor:
