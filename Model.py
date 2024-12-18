@@ -20,7 +20,8 @@ class Model:
         1) A list of words containing every word in the sentence. For example, if the sentence is "i want pizza", then this list will
         be ['i', 'want', 'pizza']. Just use the .spit() function on the sentence.
 
-        2) A list of labels, the outputs the model. It MUST be of the same length as the words list, make sure to preprocess to handle
-        any tokenization/padding.
+        2) A list of labels, the outputs of the model. It MUST be of the same length as the words list, make sure to preprocess to handle
+        any tokenization/padding. Furthermore, the list shouldn't be a list of indices; do not return [0, 1, 2] for example. Return
+        [OTHER, PIZZA_BEGIN, PIZZA_INTERMEDIATE]: the actual labels. A similar argument is there for module 2.
         '''
         pass
