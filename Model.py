@@ -5,6 +5,8 @@ class Model:
     
     Make sure to NOT change the parameters of the generate_labels function. You can do whatever you want with the constructor,
     just don't change anything about the generate_labels
+
+    Implement your child classes in different .py files
     '''
     def __init__(self, model_path):
         '''
