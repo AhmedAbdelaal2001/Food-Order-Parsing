@@ -28,7 +28,7 @@ class BiLSTM_Module2(Model):
         'TOPPING_BEGIN':14,
         'TOPPING_INTERMEDIATE':15,
         'VOLUME':16}
-    def generate_labels(self, sentence):
+    def predict_labels(self, sentence):
         sentence_words=sentence.split()
         sentence_length=len(sentence_words)
         embeddings = load_embeddings(sentence)

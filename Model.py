@@ -15,7 +15,7 @@ class Model:
         pass
     
 
-    def generate_labels(self, sentence):
+    def predict_labels(self, sentence):
         '''
         This method takes in an input string representing a sentence in the required format, and outputs 2 lists:
 
