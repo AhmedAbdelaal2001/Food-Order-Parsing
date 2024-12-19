@@ -279,28 +279,12 @@ def process_structure(parsed):
     }
 
 def process_pizza_order(attributes):
-    # attributes is something like:
-    # [['NUMBER','two'], ['SIZE','large'], ['STYLE','chicago','style'],
-    #  ['COMPLEX_TOPPING',['QUANTITY','extra'],['TOPPING','cheese']],
-    #  ['TOPPING','pepperoni'],
-    #  ['NOT',['TOPPING','onions']],
-    #  ['TOPPING','bacon'] ]
-    #
-    # We want:
-    # {
-    #   "NUMBER": "two",
-    #   "SIZE": "large",
-    #   "STYLE": [{"NOT": false, "TYPE": "chicago style"}],
-    #   "AllTopping": [...]
-    # }
-
     number = None
     size = None
     style = []
     all_topping = []
 
     for attr in attributes:
-        # attr is a list like ['NUMBER','two'] or ['STYLE','chicago','style']
         if not attr:
             continue
         key = attr[0]
@@ -308,16 +292,12 @@ def process_pizza_order(attributes):
         if key == 'NUMBER':
             number = attr[1]
         elif key == 'SIZE':
-            size = attr[1]
+            # Join all following tokens in case SIZE has multiple words
+            size = " ".join(attr[1:])
         elif key == 'STYLE':
-            # STYLE may be multiple words: combine them into a single string
-            # e.g., ['STYLE','chicago','style'] -> "chicago style"
             style_text = " ".join(attr[1:])
-            # STYLE is always NOT:false in given examples (unless wrapped by NOT)
             style.append({"NOT": False, "TYPE": style_text})
         elif key == 'COMPLEX_TOPPING':
-            # format: ['COMPLEX_TOPPING',['QUANTITY','extra'],['TOPPING','cheese']]
-            # quantity = extra, topping = cheese
             quantity, topping = None, None
             not_flag = False
             for comp in attr[1:]:
@@ -327,24 +307,18 @@ def process_pizza_order(attributes):
                     topping = " ".join(comp[1:])
             all_topping.append({"NOT": not_flag, "Quantity": quantity, "Topping": topping})
         elif key == 'TOPPING':
-            # simple topping
             topping = " ".join(attr[1:])
-            # default NOT is false for simple topping
             all_topping.append({"NOT": False, "Quantity": None, "Topping": topping})
         elif key == 'NOT':
-            # Something like ['NOT',['TOPPING','onions']] or ['NOT',['TOPPING','bacon']]
-            # The nested attribute will determine what it is negating.
-            nested = attr[1]  # e.g., ['TOPPING','onions']
+            nested = attr[1]
             nested_key = nested[0]
             if nested_key == 'TOPPING':
                 topping = " ".join(nested[1:])
-                # NOT = true
                 all_topping.append({"NOT": True, "Quantity": None, "Topping": topping})
             elif nested_key == 'STYLE':
                 style_text = " ".join(nested[1:])
                 style.append({"NOT": True, "TYPE": style_text})
             elif nested_key == 'COMPLEX_TOPPING':
-                # If complex topping is under NOT (rare case not shown in example), handle similarly
                 quantity, topping = None, None
                 for comp in nested[1:]:
                     if comp[0] == 'QUANTITY':
@@ -360,6 +334,7 @@ def process_pizza_order(attributes):
         "AllTopping": all_topping
     }
 
+
 def process_drink_order(attributes):
     # attributes something like:
     # [['NUMBER','five'],['SIZE','large'],['CONTAINERTYPE','bottles'],['DRINKTYPE','coke']]
@@ -368,8 +343,9 @@ def process_drink_order(attributes):
     #   "NUMBER": "five",
     #   "SIZE": "large",
     #   "DRINKTYPE": "coke",
-    #   "CONTAINERTYPE": "bottle"
+    #   "CONTAINERTYPE": "bottles"
     # }
+
     number = None
     size = None
     drinktype = None
@@ -378,20 +354,21 @@ def process_drink_order(attributes):
     for attr in attributes:
         key = attr[0]
         if key == 'NUMBER':
-            number = attr[1]
+            number = " ".join(attr[1:])
         elif key == 'SIZE':
-            size = attr[1]
+            size = " ".join(attr[1:])
         elif key == 'DRINKTYPE':
             drinktype = " ".join(attr[1:])
         elif key == 'CONTAINERTYPE':
-            containertype = singularize(" ".join(attr[1:]))
+            containertype = " ".join(attr[1:])
 
     return {
         "NUMBER": number,
-        "SIZE": size,
+        "SIZE": size if size else None,
         "DRINKTYPE": drinktype,
         "CONTAINERTYPE": containertype
     }
+
 
 
 # Let's simplify: We'll read the entire input at once, parse it into one big list and then
