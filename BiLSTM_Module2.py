@@ -2,15 +2,19 @@ from Model import *
 from tensorflow.keras.models import load_model
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
-import gensim.downloader as api
+# import gensim.downloader as api
 from gensim.models import KeyedVectors
 from tensorflow.keras.preprocessing.sequence import pad_sequences
+
+def get_word2vec(word2vec_path):
+    print("Loading word2vec model from disk... module2")
+    return KeyedVectors.load(word2vec_path)
+
 class BiLSTM_Module2(Model):
-    word2vec=None
-    def __init__(self, model_path):
+    # word2vec=None
+    def __init__(self, model_path,word2vec_path):
         self.model = load_model(model_path)
-        if BiLSTM_Module2.word2vec is None:
-            BiLSTM_Module2.word2vec = api.load("word2vec-google-news-300")
+        self.word2vec = get_word2vec(word2vec_path)
         self.labels_to_indices ={"COMPLEX_TOPPING-QUANTITY": 0,
         "COMPLEX_TOPPING-TOPPING_BEGIN":1,
         'COMPLEX_TOPPING-TOPPING_INTERMEDIATE':2,
@@ -31,7 +35,7 @@ class BiLSTM_Module2(Model):
     def predict_labels(self, sentence):
         sentence_words=sentence.split()
         sentence_length=len(sentence_words)
-        embeddings = load_embeddings(sentence)
+        embeddings = load_embeddings(sentence,self.word2vec)
         padded = pad_sequences([embeddings], maxlen=sentence_length, dtype='float32', padding='post', value=100)
         predictions = self.model.predict(padded)
         predicted_labels = np.argmax(predictions, axis=-1)
@@ -40,14 +44,8 @@ class BiLSTM_Module2(Model):
         predicted_labels_mapped = [
             [index_to_label.get(idx) for idx in seq] for seq in predicted_labels
         ]
-        return sentence_words, predicted_labels_mapped
-    
-def get_word2vec():
-    if BiLSTM_Module2.word2vec is None:
-        BiLSTM_Module2.word2vec = api.load("word2vec-google-news-300")
-    return BiLSTM_Module2.word2vec  
-def load_embeddings(sentence):
-  word2vec=get_word2vec()
+        return sentence_words, predicted_labels_mapped[0]
+def load_embeddings(sentence,word2vec):
   def classify_with_average_embedding(candidate,avg):
     similarity = 0
     words = candidate.split()  # Split the candidate into words
