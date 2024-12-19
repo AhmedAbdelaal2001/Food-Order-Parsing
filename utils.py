@@ -1,4 +1,5 @@
 import re
+import json
 
 class Node:
     """
@@ -204,3 +205,237 @@ def generate_top_decoupled(sentence, labels, is_pizza_order):
 
     output_sentence = identifier + output_sentence + ')'
     return output_sentence
+
+def tokenize(s):
+    # Simple tokenizer that splits on spaces and parentheses.
+    tokens = []
+    current = []
+    for char in s:
+        if char.isspace():
+            if current:
+                tokens.append("".join(current))
+                current = []
+        elif char == '(' or char == ')':
+            if current:
+                tokens.append("".join(current))
+                current = []
+            tokens.append(char)
+        else:
+            current.append(char)
+    if current:
+        tokens.append("".join(current))
+    return tokens
+
+def parse_tokens(tokens):
+    # Parse the tokens into a nested list structure.
+    # Each time we see '(', we start a new list until we see ')'.
+    # Example: (PIZZAORDER (NUMBER two)) -> ['PIZZAORDER', ['NUMBER', 'two']]
+    def helper(it):
+        lst = []
+        for token in it:
+            if token == '(':
+                lst.append(helper(it))
+            elif token == ')':
+                return lst
+            else:
+                lst.append(token)
+        return lst
+
+    return helper(iter(tokens))
+
+def singularize(s):
+    # Simple heuristic to singularize containers if they end with 's'
+    if s.endswith('s'):
+        return s[:-1]
+    return s
+
+def process_structure(parsed):
+    # parsed is a list of top-level elements like ['PIZZAORDER', [...]] repeated.
+    # We want to collect PIZZAORDER and DRINKORDER segments.
+    pizza_orders = []
+    drink_orders = []
+
+    # The top-level structure might look like:
+    # [
+    #   ['PIZZAORDER', ['NUMBER','two'], ['SIZE','large'], ... ],
+    #   ['PIZZAORDER', ['NUMBER','three'], ['SIZE','small'], ... ],
+    #   ['DRINKORDER', ['NUMBER','five'], ...],
+    #   ...
+    # ]
+
+    for element in parsed:
+        # element[0] is the type: PIZZAORDER or DRINKORDER, the rest are attributes
+        order_type = element[0]
+        if order_type == 'PIZZAORDER':
+            pizza_orders.append(process_pizza_order(element[1:]))
+        elif order_type == 'DRINKORDER':
+            drink_orders.append(process_drink_order(element[1:]))
+
+    return {
+        "ORDER": {
+            "PIZZAORDER": pizza_orders,
+            "DRINKORDER": drink_orders
+        }
+    }
+
+def process_pizza_order(attributes):
+    # attributes is something like:
+    # [['NUMBER','two'], ['SIZE','large'], ['STYLE','chicago','style'],
+    #  ['COMPLEX_TOPPING',['QUANTITY','extra'],['TOPPING','cheese']],
+    #  ['TOPPING','pepperoni'],
+    #  ['NOT',['TOPPING','onions']],
+    #  ['TOPPING','bacon'] ]
+    #
+    # We want:
+    # {
+    #   "NUMBER": "two",
+    #   "SIZE": "large",
+    #   "STYLE": [{"NOT": false, "TYPE": "chicago style"}],
+    #   "AllTopping": [...]
+    # }
+
+    number = None
+    size = None
+    style = []
+    all_topping = []
+
+    for attr in attributes:
+        # attr is a list like ['NUMBER','two'] or ['STYLE','chicago','style']
+        if not attr:
+            continue
+        key = attr[0]
+
+        if key == 'NUMBER':
+            number = attr[1]
+        elif key == 'SIZE':
+            size = attr[1]
+        elif key == 'STYLE':
+            # STYLE may be multiple words: combine them into a single string
+            # e.g., ['STYLE','chicago','style'] -> "chicago style"
+            style_text = " ".join(attr[1:])
+            # STYLE is always NOT:false in given examples (unless wrapped by NOT)
+            style.append({"NOT": False, "TYPE": style_text})
+        elif key == 'COMPLEX_TOPPING':
+            # format: ['COMPLEX_TOPPING',['QUANTITY','extra'],['TOPPING','cheese']]
+            # quantity = extra, topping = cheese
+            quantity, topping = None, None
+            not_flag = False
+            for comp in attr[1:]:
+                if comp[0] == 'QUANTITY':
+                    quantity = " ".join(comp[1:])
+                elif comp[0] == 'TOPPING':
+                    topping = " ".join(comp[1:])
+            all_topping.append({"NOT": not_flag, "Quantity": quantity, "Topping": topping})
+        elif key == 'TOPPING':
+            # simple topping
+            topping = " ".join(attr[1:])
+            # default NOT is false for simple topping
+            all_topping.append({"NOT": False, "Quantity": None, "Topping": topping})
+        elif key == 'NOT':
+            # Something like ['NOT',['TOPPING','onions']] or ['NOT',['TOPPING','bacon']]
+            # The nested attribute will determine what it is negating.
+            nested = attr[1]  # e.g., ['TOPPING','onions']
+            nested_key = nested[0]
+            if nested_key == 'TOPPING':
+                topping = " ".join(nested[1:])
+                # NOT = true
+                all_topping.append({"NOT": True, "Quantity": None, "Topping": topping})
+            elif nested_key == 'STYLE':
+                style_text = " ".join(nested[1:])
+                style.append({"NOT": True, "TYPE": style_text})
+            elif nested_key == 'COMPLEX_TOPPING':
+                # If complex topping is under NOT (rare case not shown in example), handle similarly
+                quantity, topping = None, None
+                for comp in nested[1:]:
+                    if comp[0] == 'QUANTITY':
+                        quantity = " ".join(comp[1:])
+                    elif comp[0] == 'TOPPING':
+                        topping = " ".join(comp[1:])
+                all_topping.append({"NOT": True, "Quantity": quantity, "Topping": topping})
+
+    return {
+        "NUMBER": number,
+        "SIZE": size,
+        "STYLE": style,
+        "AllTopping": all_topping
+    }
+
+def process_drink_order(attributes):
+    # attributes something like:
+    # [['NUMBER','five'],['SIZE','large'],['CONTAINERTYPE','bottles'],['DRINKTYPE','coke']]
+    # We want:
+    # {
+    #   "NUMBER": "five",
+    #   "SIZE": "large",
+    #   "DRINKTYPE": "coke",
+    #   "CONTAINERTYPE": "bottle"
+    # }
+    number = None
+    size = None
+    drinktype = None
+    containertype = None
+
+    for attr in attributes:
+        key = attr[0]
+        if key == 'NUMBER':
+            number = attr[1]
+        elif key == 'SIZE':
+            size = attr[1]
+        elif key == 'DRINKTYPE':
+            drinktype = " ".join(attr[1:])
+        elif key == 'CONTAINERTYPE':
+            containertype = singularize(" ".join(attr[1:]))
+
+    return {
+        "NUMBER": number,
+        "SIZE": size,
+        "DRINKTYPE": drinktype,
+        "CONTAINERTYPE": containertype
+    }
+
+
+# Let's simplify: We'll read the entire input at once, parse it into one big list and then
+# identify top-level orders. Each top-level order seems to be of the form: '(' <ORDERNAME> ... ')'
+
+def parse_and_convert_to_json(input_str):
+    # Tokenize and parse once
+    tokens = tokenize(input_str)
+    # Now, we expect a sequence of top-level forms. Let's parse them all:
+    top_level_forms = []
+    idx = 0
+
+    def parse_form(idx):
+        # expects tokens[idx] == '('
+        assert tokens[idx] == '('
+        idx += 1
+        form = []
+        while idx < len(tokens):
+            if tokens[idx] == '(':
+                subform, idx = parse_form(idx)
+                form.append(subform)
+            elif tokens[idx] == ')':
+                idx += 1
+                return form, idx
+            else:
+                form.append(tokens[idx])
+                idx += 1
+        return form, idx
+
+    while idx < len(tokens):
+        if tokens[idx] == '(':
+            form, idx = parse_form(idx)
+            top_level_forms.append(form)
+        else:
+            idx += 1
+
+    # Now we have a list like:
+    # [
+    #   ['PIZZAORDER', ['NUMBER','two'], ['SIZE','large'], ...],
+    #   ['PIZZAORDER', ...],
+    #   ['DRINKORDER', ...],
+    #   ...
+    # ]
+
+    # Convert to desired structure
+    result = process_structure(top_level_forms)
+    return json.dumps(result, indent=2)
